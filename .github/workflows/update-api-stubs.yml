@@ -2,8 +2,8 @@ name: Generate Pydantic Stubs from api.comfy.org
 
 on:
   schedule:
-    - cron: '0 0 * * 1'
-  workflow_dispatch:
+    - cron: '0 0 * * 1' # Runs every Monday at midnight UTC
+  workflow_dispatch: # Allows manual triggering
 
 jobs:
   generate-models:
@@ -22,24 +22,26 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install 'datamodel-code-generator[http]'
-          npm install @redocly/cli
+          npm install @redocly/cli --global
       
       - name: Download OpenAPI spec
         run: |
-          curl -o openapi.yaml https://api.comfy.org/openapi
+          curl -L -o openapi.yaml https://api.comfy.org/openapi
       
       - name: Filter OpenAPI spec with Redocly
         run: |
-          npx @redocly/cli bundle openapi.yaml --output filtered-openapi.yaml --config comfy_api_nodes/redocly.yaml --remove-unused-components
+          redocly bundle openapi.yaml --output filtered-openapi.yaml --config comfy_api_nodes/redocly.yaml --remove-unused-components
       
       - name: Generate API models
         run: |
-          datamodel-codegen --use-subclass-enum --input filtered-openapi.yaml --output comfy_api_nodes/apis --output-model-type pydantic_v2.BaseModel
+          # The output is now a specific file 'models.py' inside the 'apis' directory
+          datamodel-codegen --use-subclass-enum --input filtered-openapi.yaml --output comfy_api_nodes/apis/models.py --output-model-type pydantic_v2.BaseModel
       
       - name: Check for changes
         id: git-check
         run: |
-          git diff --exit-code comfy_api_nodes/apis || echo "changes=true" >> $GITHUB_OUTPUT
+          # Check for changes specifically in the generated file
+          git diff --exit-code comfy_api_nodes/apis/models.py || echo "changes=true" >> $GITHUB_OUTPUT
       
       - name: Create Pull Request
         if: steps.git-check.outputs.changes == 'true'
@@ -50,7 +52,7 @@ jobs:
           body: |
             This PR updates the API models based on the latest api.comfy.org OpenAPI specification.
             
-            Generated automatically by the a Github workflow.
+            Generated automatically by a Github workflow.
           branch: update-api-stubs
           delete-branch: true
           base: master
